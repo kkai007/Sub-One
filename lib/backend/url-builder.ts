@@ -85,8 +85,10 @@ function buildVlessUrl(node: VlessNode): string {
     }
 
     // Explicitly clean up loose security params if not strictly enabled
+    // Explicitly clean up loose security params if not strictly enabled
     if (node.tls?.insecure !== true) {
         params.delete('allowInsecure');
+        params.delete('insecure');
     }
 
     // VLESS standard: explicitly set headerType=none if not present but implied
@@ -154,7 +156,7 @@ function buildShadowsocksUrl(node: ShadowsocksNode): string {
     const userInfo = `${node.cipher}:${node.password}`;
     const base64Info = encodeBase64(userInfo);
     const host = node.server.includes(':') ? `[${node.server}]` : node.server;
-    const hash = node.name ? `#${encodeURIComponent(node.name)}` : '';
+    const hash = node.name ? `#${node.name}` : '';
 
     let url = `ss://${base64Info}@${host}:${node.port}`;
 
