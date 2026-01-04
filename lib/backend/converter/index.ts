@@ -33,6 +33,7 @@ export class SubscriptionConverter {
     convert(nodes: ProxyNode[], format: string, options: ConverterOptions = {}): string {
         const formatHandlers: Record<string, () => string> = {
             'base64': () => this.toBase64(nodes),
+            'v2ray': () => this.toBase64(nodes),
             'clash': () => toClash(nodes, options),
             'singbox': () => toSingBox(nodes, options),
             'surge': () => toSurge(nodes, options),
