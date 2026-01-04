@@ -1080,7 +1080,7 @@ async function handleSubRequest(context: EventContext<Env, any, any>): Promise<R
             const fakeNodeName = `流量剩余 ≫ ${formattedTraffic}`;
             const encodedName = encodeURIComponent(fakeNodeName);
             // 注意：这里我们构建一个虚拟的 trojan 节点用于显示流量
-            prependedContentForSubconverter = `trojan://00000000-0000-0000-0000-000000000000@127.0.0.1:443?allowInsecure=1#${encodedName}\n`;
+            prependedContentForSubconverter = `trojan://00000000-0000-0000-0000-000000000000@127.0.0.1:443?#${encodedName}\n`;
         }
     }
 
