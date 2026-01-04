@@ -67,7 +67,9 @@ function buildVlessUrl(node: VlessNode): string {
     const params = buildStandardQuery(node.transport, node.tls);
 
     if (node.flow) params.set('flow', node.flow);
-    if (node.encryption) params.set('encryption', node.encryption);
+
+    const encryption = node.encryption || 'none';
+    params.set('encryption', encryption);
 
     if (node.tls?.reality?.enabled) {
         params.set('security', 'reality');
@@ -81,7 +83,15 @@ function buildVlessUrl(node: VlessNode): string {
     if (node.transport?.type === 'tcp' && !params.has('type')) {
         params.set('type', 'tcp');
     }
-    if (node.transport?.headerType === 'none' && !params.has('headerType')) {
+
+    // Explicitly clean up loose security params if not strictly enabled
+    if (node.tls?.insecure !== true) {
+        params.delete('allowInsecure');
+    }
+
+    // VLESS standard: explicitly set headerType=none if not present but implied
+    // VLESS standard: explicitly set headerType=none if not present but implied
+    if ((!node.transport?.headerType || node.transport.headerType === 'none') && !params.has('headerType')) {
         params.set('headerType', 'none');
     }
 
