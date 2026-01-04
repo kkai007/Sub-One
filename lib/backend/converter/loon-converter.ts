@@ -1,5 +1,5 @@
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode, Hysteria2Node, TuicNode, WireGuardNode, SnellNode } from '../../shared/types';
-import { LOON_CONFIG } from '../config/config';
+import { LOON_CONFIG, DEFAULT_TEST_URL } from '../config/config';
 import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
 /**
@@ -37,7 +37,7 @@ export function toLoon(nodes: ProxyNode[], options: ConverterOptions = {}): stri
         // 默认包含所有节点
         let content = `${g.name} = ${type}, ${LOON_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
         if (g.type === 'url-test') {
-            content += `, url=http://www.gstatic.com/generate_204, interval=600`;
+            content += `, url=${DEFAULT_TEST_URL}, interval=600`;
         }
         lines.push(content);
     });
@@ -59,11 +59,9 @@ export function toLoon(nodes: ProxyNode[], options: ConverterOptions = {}): stri
         else if (r.type === 'domain_keyword') lines.push(`DOMAIN-KEYWORD,${r.value},${target}`);
         else if (r.type === 'ip_cidr') lines.push(`IP-CIDR,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
         else if (r.type === 'geoip') lines.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
-        else if (r.type === 'geosite') {
-            if (r.value === 'cn') lines.push(`GEOIP,CN,${target}`);
-            else lines.push(`// GEOSITE,${r.value},${target} (Not supported natively)`);
-        }
+
         else if (r.type === 'process_name') lines.push(`PROCESS-NAME,${r.value},${target}`);
+        else if (r.type === 'rule_set') lines.push(`RULE-SET,${r.value},${target}`);
     });
 
     lines.push('GEOIP,CN,DIRECT');

@@ -24,8 +24,9 @@ export type RuleType =
     | 'domain_keyword'
     | 'ip_cidr'
     | 'geoip'
-    | 'geosite'
-    | 'process_name';
+
+    | 'process_name'
+    | 'rule_set';
 
 export interface UniversalRule {
     type: RuleType;
@@ -84,20 +85,42 @@ export const TEMPLATE_STANDARD: RuleTemplate = {
         { name: 'Streaming', type: 'select', icon: '🎬' }
     ],
     rules: [
-        // AdBlock
-        { type: 'geosite', value: 'category-ads-all', target: 'Reject' },
+        // AdBlock (Remote Rule Set)
+        {
+            type: 'rule_set',
+            // 使用经典的 ACL4SSR 广告拦截列表
+            value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list',
+            target: 'Reject'
+        },
 
-        // Specific Groups
-        { type: 'geosite', value: 'apple', target: 'Apple' },
-        { type: 'geosite', value: 'microsoft', target: 'Microsoft' },
-        { type: 'geosite', value: 'google', target: 'Google' },
-        { type: 'geosite', value: 'telegram', target: 'Telegram' },
-        { type: 'geosite', value: 'netflix', target: 'Streaming' },
-        { type: 'geosite', value: 'youtube', target: 'Streaming' },
-        { type: 'geosite', value: 'disney', target: 'Streaming' },
+        // Specific Groups (使用 Remote Rule Set 以获得更完整的列表)
+        {
+            type: 'rule_set',
+            value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple.list',
+            target: 'Apple'
+        },
+        {
+            type: 'rule_set',
+            value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Microsoft/Microsoft.list',
+            target: 'Microsoft'
+        },
+        {
+            type: 'rule_set',
+            value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Google/Google.list',
+            target: 'Google'
+        },
+        {
+            type: 'rule_set',
+            value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram.list',
+            target: 'Telegram'
+        },
+        // Streaming (使用 Remote Rule Set)
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix.list', target: 'Streaming' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube.list', target: 'Streaming' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Disney/Disney.list', target: 'Streaming' },
 
         // CN
-        { type: 'geosite', value: 'cn', target: 'Direct' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list', target: 'Direct' },
         { type: 'geoip', value: 'cn', target: 'Direct' },
         { type: 'geoip', value: 'private', target: 'Direct' }
     ]
@@ -107,23 +130,41 @@ export const TEMPLATE_STANDARD: RuleTemplate = {
  * 模板 3: ACL4SSR 精简版 (ACL4SSR_Mini)
  * 模仿经典的 ACL4SSR 分组逻辑，适合习惯该配置的用户。
  */
+/**
+ * 模板 3: ACL4SSR 精简版 (ACL4SSR_Mini)
+ * 模仿经典的 ACL4SSR 分组逻辑，适合习惯该配置的用户。
+ * 全面采用远程规则集。
+ */
 export const TEMPLATE_ACL4SSR: RuleTemplate = {
     id: 'acl4ssr',
-    name: 'ACL4SSR 精简版',
-    description: '经典的 ACL4SSR 分组策略，包含流媒体、社交网络等详细分组。',
+    name: 'ACL4SSR 精简版 (RuleSet)',
+    description: '经典的 ACL4SSR 分组策略，使用远程规则集，包含流媒体、社交网络等详细分组。',
     groups: [
         { name: 'Netflix', type: 'select', icon: '🎥' },
         { name: 'Telegram', type: 'select', icon: '📲' },
         { name: 'YouTube', type: 'select', icon: '📹' },
-        { name: 'Spotify', type: 'select', icon: '🎵' }
+        { name: 'Spotify', type: 'select', icon: '🎵' },
+        { name: 'Apple', type: 'select', icon: '🍎' },
+        { name: 'Scholar', type: 'select', icon: '📚' } // 学术/Google Scholar
     ],
     rules: [
-        { type: 'geosite', value: 'category-ads-all', target: 'Reject' },
-        { type: 'geosite', value: 'netflix', target: 'Netflix' },
-        { type: 'geosite', value: 'telegram', target: 'Telegram' },
-        { type: 'geosite', value: 'youtube', target: 'YouTube' },
-        { type: 'geosite', value: 'spotify', target: 'Spotify' },
-        { type: 'geosite', value: 'cn', target: 'Direct' },
+        // AdBlock
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list', target: 'Reject' },
+
+        // Specific Apps
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix.list', target: 'Netflix' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube.list', target: 'YouTube' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Spotify/Spotify.list', target: 'Spotify' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram.list', target: 'Telegram' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple.list', target: 'Apple' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleScholar/GoogleScholar.list', target: 'Scholar' },
+
+        // Common GFW List (Proxy Lite)
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyLite.list', target: 'Proxy' },
+
+        // CN & Final
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaDomain.list', target: 'Direct' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaIp.list', target: 'Direct' },
         { type: 'geoip', value: 'cn', target: 'Direct' },
         { type: 'geoip', value: 'private', target: 'Direct' }
     ]
@@ -132,50 +173,62 @@ export const TEMPLATE_ACL4SSR: RuleTemplate = {
 /**
  * 模板 4: 高级全能版 (Advanced)
  * 极致细分，包含 AI、各类流媒体、游戏等独立策略组。
+ * 适合进阶用户，全量使用高质量 Rule Rulesets.
  */
 export const TEMPLATE_ADVANCED: RuleTemplate = {
     id: 'advanced',
     name: '高级全能版 (AI/流媒体细分)',
-    description: '适合进阶用户，包含 OpenAI、Disney+、Prime Video、游戏等独立分组。',
+    description: '适合进阶用户，包含 OpenAI、Disney+、Prime Video、游戏等独立分组，全链路规则集覆盖。',
     groups: [
-        { name: 'AI Services', type: 'select', icon: '🤖' }, // ChatGPT, Bard, Bing
+        { name: 'AI Services', type: 'select', icon: '🤖' }, // ChatGPT, Claude, Gemini
         { name: 'Netflix', type: 'select', icon: '🎥' },
         { name: 'Disney+', type: 'select', icon: '🏰' },
         { name: 'Prime Video', type: 'select', icon: '📦' },
         { name: 'YouTube', type: 'select', icon: '📹' },
+        { name: 'Bilibili', type: 'select', icon: '📺' }, // 哔哩哔哩东南亚/港澳台
         { name: 'Spotify', type: 'select', icon: '🎵' },
         { name: 'Telegram', type: 'select', icon: '✈️' },
         { name: 'Steam', type: 'select', icon: '🎮' },   // 游戏平台
         { name: 'Apple', type: 'select', icon: '🍎' },
         { name: 'Microsoft', type: 'select', icon: '🪟' },
-        { name: 'PayPal', type: 'select', icon: '💳' }
+        { name: 'PayPal', type: 'select', icon: '💳' },
+        { name: 'Crypto', type: 'select', icon: '💰' }    // 加密货币
     ],
     rules: [
-        { type: 'geosite', value: 'category-ads-all', target: 'Reject' },
+        // 1. AdBlock
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/BanAD.list', target: 'Reject' },
 
-        // AI
-        { type: 'geosite', value: 'openai', target: 'AI Services' },
-        { type: 'geosite', value: 'anthropic', target: 'AI Services' }, // Claude
+        // 2. AI Services (OpenAI / Claude / Gemini)
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.list', target: 'AI Services' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anthropic/Anthropic.list', target: 'AI Services' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gemini/Gemini.list', target: 'AI Services' },
 
-        // Streaming
-        { type: 'geosite', value: 'netflix', target: 'Netflix' },
-        { type: 'geosite', value: 'disney', target: 'Disney+' },
-        { type: 'geosite', value: 'primevideo', target: 'Prime Video' },
-        { type: 'geosite', value: 'youtube', target: 'YouTube' },
-        { type: 'geosite', value: 'spotify', target: 'Spotify' },
+        // 3. Streaming
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix.list', target: 'Netflix' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Disney/Disney.list', target: 'Disney+' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PrimeVideo/PrimeVideo.list', target: 'Prime Video' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube.list', target: 'YouTube' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Spotify/Spotify.list', target: 'Spotify' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BiliBili/BiliBili.list', target: 'Bilibili' },
 
-        // Gaming
-        { type: 'geosite', value: 'steam', target: 'Steam' },
-        { type: 'geosite', value: 'epicgames', target: 'Steam' },
+        // 4. Social & Communication
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram.list', target: 'Telegram' },
 
-        // Common
-        { type: 'geosite', value: 'telegram', target: 'Telegram' },
-        { type: 'geosite', value: 'paypal', target: 'PayPal' },
-        { type: 'geosite', value: 'apple', target: 'Apple' },
-        { type: 'geosite', value: 'microsoft', target: 'Microsoft' },
+        // 5. Gaming
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Steam/Steam.list', target: 'Steam' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Epic/Epic.list', target: 'Steam' }, // Using Steam group for all games
 
-        // CN & Final
-        { type: 'geosite', value: 'cn', target: 'Direct' },
+        // 6. Common Services
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PayPal/PayPal.list', target: 'PayPal' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple.list', target: 'Apple' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Microsoft/Microsoft.list', target: 'Microsoft' },
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Financial/Financial.list', target: 'Crypto' },
+
+        // 7. Generic Proxy (Global)
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ProxyLite.list', target: 'Proxy' },
+
+        // 8. CN & Direct
+        { type: 'rule_set', value: 'https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China.list', target: 'Direct' },
         { type: 'geoip', value: 'cn', target: 'Direct' },
         { type: 'geoip', value: 'private', target: 'Direct' }
     ]

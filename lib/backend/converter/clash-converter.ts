@@ -61,7 +61,11 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
     const rules: string[] = [];
 
     // 遍历模板规则
-    tpl.rules.forEach(r => {
+    // 规则集提供者存储
+    const ruleProviders: Record<string, any> = {};
+
+    // 遍历模板规则
+    tpl.rules.forEach((r, index) => {
         let target = r.target;
         // 映射 Target (Proxy/Direct -> 具体组名)
         if (baseGroupMap[target]) {
@@ -78,11 +82,21 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
         else if (r.type === 'geoip') {
             rules.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
         }
-        else if (r.type === 'geosite') {
-            rules.push(`GEOSITE,${r.value},${target}`);
-        }
+
         else if (r.type === 'process_name') {
             rules.push(`PROCESS-NAME,${r.value},${target}`);
+        }
+        else if (r.type === 'rule_set') {
+            // 生成唯一的 Provider 名称
+            const providerName = `rule_provider_${index}`;
+            ruleProviders[providerName] = {
+                type: 'http',
+                behavior: 'classical',
+                url: r.value,
+                path: `./rules/${providerName}.yaml`,
+                interval: 86400
+            };
+            rules.push(`RULE-SET,${providerName},${target}`);
         }
     });
 
@@ -90,15 +104,26 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
     rules.push(`MATCH,${CLASH_CONFIG.groupNames.select}`);
 
     // 构建配置结构
+    // 构建配置结构
     const config = {
+        // 基础配置
         port: CLASH_CONFIG.port,
         'socks-port': CLASH_CONFIG['socks-port'],
+        'mixed-port': CLASH_CONFIG['mixed-port'],
         'allow-lan': CLASH_CONFIG['allow-lan'],
+        'bind-address': CLASH_CONFIG['bind-address'],
         mode: CLASH_CONFIG.mode,
         'log-level': CLASH_CONFIG['log-level'],
+        ipv6: CLASH_CONFIG.ipv6,
         'external-controller': CLASH_CONFIG['external-controller'],
+
+        // DNS 配置
+        dns: CLASH_CONFIG.dns,
+
+        // 代理与策略
         proxies: proxies,
         'proxy-groups': proxyGroups,
+        'rule-providers': Object.keys(ruleProviders).length > 0 ? ruleProviders : undefined,
         rules: rules
     };
 

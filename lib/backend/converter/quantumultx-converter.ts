@@ -1,13 +1,14 @@
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode } from '../../shared/types';
-import { QX_CONFIG } from '../config/config';
+import { QX_CONFIG, DEFAULT_TEST_URL } from '../config/config';
 import { getTemplate, RuleTemplate } from '../config/rule-templates';
+
 
 export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const lines: string[] = [];
     const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
 
     lines.push('[general]');
-    lines.push('server_check_url=http://www.apple.com/generate_204');
+    lines.push(`server_check_url=${DEFAULT_TEST_URL}`);
     lines.push(`dns_server=${QX_CONFIG.dns}`);
     lines.push('');
     lines.push('[server_local]');
@@ -30,12 +31,12 @@ export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}
 
     // 基础策略组
     lines.push(`static=${QX_CONFIG.groupNames.proxy}, ${tpl.groups.map(g => g.name).concat([QX_CONFIG.groupNames.direct]).join(', ')}, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png`);
-    lines.push(`url-latency-benchmark=${QX_CONFIG.groupNames.auto}, ${nodeNames.join(', ')}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Auto.png`);
+    lines.push(`url-latency-benchmark=${QX_CONFIG.groupNames.auto}, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600, tolerance=50, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Auto.png`);
 
     // Template Groups
     tpl.groups.forEach(g => {
         if (g.type === 'url-test') {
-            lines.push(`url-latency-benchmark=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50`);
+            lines.push(`url-latency-benchmark=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600, tolerance=50`);
         } else {
             // select / fallback
             lines.push(`static=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${QX_CONFIG.groupNames.auto}, ${QX_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}`);
@@ -43,7 +44,8 @@ export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}
     });
 
     lines.push('');
-    lines.push('[filter_local]');
+    const filterRemote: string[] = [];
+    const filterLocal: string[] = [];
 
     // Template Rules
     tpl.rules.forEach(r => {
@@ -52,19 +54,27 @@ export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}
         if (target === 'Proxy') target = QX_CONFIG.groupNames.proxy;
         if (target === 'Direct') target = QX_CONFIG.groupNames.direct;
         if (target === 'Reject') target = 'reject';
-        if (target === 'Auto') target = QX_CONFIG.groupNames.proxy; // or Auto group
+        if (target === 'Auto') target = QX_CONFIG.groupNames.auto;
 
-        if (r.type === 'domain') lines.push(`host, ${r.value}, ${target}`);
-        else if (r.type === 'domain_suffix') lines.push(`host-suffix, ${r.value}, ${target}`);
-        else if (r.type === 'domain_keyword') lines.push(`host-keyword, ${r.value}, ${target}`);
-        else if (r.type === 'ip_cidr') lines.push(`ip-cidr, ${r.value}, ${target}${r.noResolve ? ', no-resolve' : ''}`);
-        else if (r.type === 'geoip') lines.push(`geoip, ${r.value}, ${target}`);
-        else if (r.type === 'geosite') {
-            if (r.value === 'cn') lines.push(`geoip, cn, ${target}`);
-            else lines.push(`; geosite, ${r.value}, ${target} (Not supported natively)`);
+        if (r.type === 'domain') filterLocal.push(`host, ${r.value}, ${target}`);
+        else if (r.type === 'domain_suffix') filterLocal.push(`host-suffix, ${r.value}, ${target}`);
+        else if (r.type === 'domain_keyword') filterLocal.push(`host-keyword, ${r.value}, ${target}`);
+        else if (r.type === 'ip_cidr') filterLocal.push(`ip-cidr, ${r.value}, ${target}${r.noResolve ? ', no-resolve' : ''}`);
+        else if (r.type === 'geoip') filterLocal.push(`geoip, ${r.value}, ${target}`);
+        else if (r.type === 'rule_set') {
+            const tagName = r.value.split('/').pop()?.replace('.list', '') || 'RuleSet';
+            filterRemote.push(`${r.value}, tag=${tagName}, force-policy=${target}, update-interval=86400, opt-parser=true, enabled=true`);
         }
-        // process-name not consistently supported in QX or different syntax
     });
+
+    if (filterRemote.length > 0) {
+        lines.push('[filter_remote]');
+        lines.push(...filterRemote);
+        lines.push('');
+    }
+
+    lines.push('[filter_local]');
+    lines.push(...filterLocal);
 
     lines.push(`host-suffix, local, ${QX_CONFIG.groupNames.direct}`);
     lines.push(`geoip, cn, ${QX_CONFIG.groupNames.direct}`);

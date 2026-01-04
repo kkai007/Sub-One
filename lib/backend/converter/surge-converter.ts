@@ -1,6 +1,7 @@
 import { ProxyNode, ConverterOptions, VmessNode, TrojanNode, ShadowsocksNode, Hysteria2Node, TuicNode, WireGuardNode, SnellNode } from '../../shared/types';
-import { SURGE_CONFIG } from '../config/config';
+import { SURGE_CONFIG, DEFAULT_TEST_URL } from '../config/config';
 import { getTemplate, RuleTemplate } from '../config/rule-templates';
+
 
 /**
  * 转换为 Surge 配置
@@ -40,7 +41,7 @@ export function toSurge(nodes: ProxyNode[], options: ConverterOptions = {}): str
         // 默认包含所有节点
         let content = `${g.name} = ${type}, ${SURGE_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
         if (g.type === 'url-test') {
-            content += `, url=http://www.gstatic.com/generate_204, interval=600`;
+            content += `, url=${DEFAULT_TEST_URL}, interval=600`;
         }
         lines.push(content);
     });
@@ -62,16 +63,9 @@ export function toSurge(nodes: ProxyNode[], options: ConverterOptions = {}): str
         else if (r.type === 'domain_keyword') lines.push(`DOMAIN-KEYWORD,${r.value},${target}`);
         else if (r.type === 'ip_cidr') lines.push(`IP-CIDR,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
         else if (r.type === 'geoip') lines.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
-        else if (r.type === 'geosite') {
-            // Surge doesn't natively support GEOSITE logic like Clash/Singbox without external rule sets
-            // Map common GEOSITEs to basic keywords or warn?
-            // For now, simpler mapping or comment out
-            // Or assume user uses a Surge version with rule-set support
-            // Let's comment it out or map 'cn' to GEOIP CN
-            if (r.value === 'cn') lines.push(`GEOIP,CN,${target}`);
-            else lines.push(`// GEOSITE,${r.value},${target} (Not supported natively in simple Surge config)`);
-        }
+
         else if (r.type === 'process_name') lines.push(`PROCESS-NAME,${r.value},${target}`);
+        else if (r.type === 'rule_set') lines.push(`RULE-SET,${r.value},${target}`);
     });
 
     lines.push('GEOIP,CN,DIRECT');
