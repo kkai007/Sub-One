@@ -24,12 +24,13 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
     };
 
     // 1. 构建所有策略组
-    // 始终包含基础的 Select, Auto, Direct
+    // 始终包含基础的 Select, Auto, Manual, Direct
     const proxyGroups: any[] = [
         {
             name: CLASH_CONFIG.groupNames.select,
             type: 'select',
-            proxies: [CLASH_CONFIG.groupNames.auto, ...tpl.groups.map(g => g.name), CLASH_CONFIG.groupNames.direct, ...proxies.map(p => p.name)]
+            // 核心变动：包含 自动, 手动, 模板子策略组(Netflix/AI...), 直连。不包含具体节点。
+            proxies: [CLASH_CONFIG.groupNames.auto, CLASH_CONFIG.groupNames.manual, ...tpl.groups.map(g => g.name), CLASH_CONFIG.groupNames.direct]
         },
         {
             name: CLASH_CONFIG.groupNames.auto,
@@ -40,6 +41,11 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
             tolerance: 50
         },
         {
+            name: CLASH_CONFIG.groupNames.manual,
+            type: 'select',
+            proxies: proxies.map(p => p.name)
+        },
+        {
             name: CLASH_CONFIG.groupNames.direct,
             type: 'select',
             proxies: ['DIRECT']
@@ -47,12 +53,15 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
     ];
 
     // 添加模板定义的额外策略组
+    // 添加模板定义的额外策略组
     tpl.groups.forEach(g => {
         proxyGroups.push({
             name: g.name,
             type: g.type,
             icon: g.icon,
-            // 默认包含所有节点 + 自动选择 + 直连
+            // 包含 节点选择, 自动选择, 直连, 手动选择(通过包含节点选择间接包含，或者直接包含？通常只包含前三个入口)
+            // 用户要求：其他策略组包含节点选择, ♻️自动选择, 全球直连
+            // 这里我们还保留直接节点列表以便灵活选择，除非严厉禁止
             proxies: [CLASH_CONFIG.groupNames.select, CLASH_CONFIG.groupNames.auto, CLASH_CONFIG.groupNames.direct, ...proxies.map(p => p.name)]
         });
     });
@@ -87,8 +96,17 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
             rules.push(`PROCESS-NAME,${r.value},${target}`);
         }
         else if (r.type === 'rule_set') {
-            // 生成唯一的 Provider 名称
-            const providerName = `rule_provider_${index}`;
+            // 生成唯一的 Provider 名称 (从 URL 提取文件名，如 Netflix, YouTube)
+            let baseName = r.value.split('/').pop()?.replace(/\.(list|yaml|yml)$/i, '') || `rule_${index}`;
+            // 简单处理非法字符
+            baseName = baseName.replace(/[^a-zA-Z0-9_\-]/g, '');
+
+            // 防止重名 (虽然在标准模板里不太可能，但为了健壮性)
+            let providerName = baseName;
+            let counter = 1;
+            while (ruleProviders[providerName]) {
+                providerName = `${baseName}_${counter++}`;
+            }
             ruleProviders[providerName] = {
                 type: 'http',
                 behavior: 'classical',

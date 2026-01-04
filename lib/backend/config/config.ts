@@ -94,6 +94,7 @@ export const CLASH_CONFIG = {
     groupNames: {
         select: '🚀 节点选择',
         auto: '♻️ 自动选择',
+        manual: '👋 手动选择',
         direct: '🎯 全球直连'
     },
     testUrl: DEFAULT_TEST_URL
@@ -124,6 +125,7 @@ export const SING_BOX_CONFIG = {
     groupNames: {
         proxy: '🚀 代理节点',
         auto: '♻️ 自动选择', // 统一名称
+        manual: '👋 手动选择',
         direct: '🎯 全球直连'
     }
 };
@@ -149,6 +151,7 @@ export const SURGE_CONFIG = {
     groupNames: {
         proxy: 'Proxy',
         auto: 'UrlTest',     // Surge 习惯叫 UrlTest 或 Auto
+        manual: 'Manual',
         direct: 'DIRECT'
     }
 };
@@ -168,6 +171,7 @@ export const LOON_CONFIG = {
     groupNames: {
         proxy: 'Proxy',
         auto: 'Auto',
+        manual: 'Manual',
         direct: 'DIRECT'
     }
 };
@@ -184,6 +188,7 @@ export const QX_CONFIG = {
     groupNames: {
         proxy: 'Proxy',
         auto: 'Auto',
+        manual: 'Manual',
         direct: 'direct' // QX 小写
     }
 };

@@ -29,13 +29,18 @@ export function toLoon(nodes: ProxyNode[], options: ConverterOptions = {}): stri
     lines.push('[Proxy Group]');
 
     // 基础策略组
-    lines.push(`${LOON_CONFIG.groupNames.proxy} = select, ${tpl.groups.map(g => g.name).concat([LOON_CONFIG.groupNames.direct]).join(', ')}, ${nodeNames.join(', ')}`);
+    // Proxy: 入口
+    lines.push(`${LOON_CONFIG.groupNames.proxy} = select, ${LOON_CONFIG.groupNames.auto}, ${LOON_CONFIG.groupNames.manual}, ${tpl.groups.map(g => g.name).join(', ')}, ${LOON_CONFIG.groupNames.direct}`);
+    // Auto: 自动
+    lines.push(`${LOON_CONFIG.groupNames.auto} = url-test, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600`);
+    // Manual: 手动
+    lines.push(`${LOON_CONFIG.groupNames.manual} = select, ${nodeNames.join(', ')}`);
 
     // Template Groups
     tpl.groups.forEach(g => {
         const type = g.type === 'url-test' ? 'url-test' : 'select';
-        // 默认包含所有节点
-        let content = `${g.name} = ${type}, ${LOON_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
+        // 包含 Proxy, Auto, Direct + Nodes
+        let content = `${g.name} = ${type}, ${LOON_CONFIG.groupNames.proxy}, ${LOON_CONFIG.groupNames.auto}, ${LOON_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}`;
         if (g.type === 'url-test') {
             content += `, url=${DEFAULT_TEST_URL}, interval=600`;
         }

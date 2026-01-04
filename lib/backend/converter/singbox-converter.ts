@@ -17,17 +17,21 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
     const baseGroupMap: Record<string, string> = {
         'Proxy': SING_BOX_CONFIG.groupNames.proxy,
         'Auto': SING_BOX_CONFIG.groupNames.auto,
+        'Manual': SING_BOX_CONFIG.groupNames.manual,
         'Direct': SING_BOX_CONFIG.groupNames.direct,
         'Reject': 'block'
     };
 
     // 1. 构建出站 (Outbounds)
     // 基础出站
+    // 1. 构建出站 (Outbounds)
+    // 基础出站
     const generatedOutbounds: any[] = [
         {
             tag: SING_BOX_CONFIG.groupNames.proxy,
             type: 'selector',
-            outbounds: [SING_BOX_CONFIG.groupNames.auto, ...tpl.groups.map(g => g.name), SING_BOX_CONFIG.groupNames.direct, ...outbounds.map(o => o.tag)]
+            // 核心变动：只包含入口 (Auto, Manual, TemplateGroups, Direct)
+            outbounds: [SING_BOX_CONFIG.groupNames.auto, SING_BOX_CONFIG.groupNames.manual, ...tpl.groups.map(g => g.name), SING_BOX_CONFIG.groupNames.direct]
         },
         {
             tag: SING_BOX_CONFIG.groupNames.auto,
@@ -37,6 +41,11 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
             interval: '10m',
             tolerance: 50
         },
+        {
+            tag: SING_BOX_CONFIG.groupNames.manual,
+            type: 'selector',
+            outbounds: outbounds.map(o => o.tag)
+        },
         { type: 'direct', tag: SING_BOX_CONFIG.groupNames.direct },
         { type: 'block', tag: 'block' },
         { type: 'dns', tag: 'dns-out' },
@@ -45,7 +54,7 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
 
     // 添加模板定义的额外策略组
     tpl.groups.forEach(g => {
-        generatedOutbounds.splice(2, 0, { // 插入到 Direct 之前
+        generatedOutbounds.splice(3, 0, { // 插入到 Direct 之前 (Manual 之后)
             tag: g.name,
             type: g.type === 'url-test' ? 'urltest' : 'selector',
             outbounds: [SING_BOX_CONFIG.groupNames.proxy, SING_BOX_CONFIG.groupNames.auto, SING_BOX_CONFIG.groupNames.direct, ...outbounds.map(o => o.tag)],
@@ -55,6 +64,7 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
     });
 
     // 2. 构建路由规则 (Route Rules)
+    const ruleSets: any[] = [];
     const rules: any[] = [
         { protocol: 'dns', outbound: 'dns-out' }
     ];
@@ -73,8 +83,32 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
         else if (r.type === 'domain_keyword') rules.push({ ...ruleBase, domain_keyword: [r.value] });
         else if (r.type === 'ip_cidr') rules.push({ ...ruleBase, ip_cidr: [r.value] });
         else if (r.type === 'geoip') rules.push({ ...ruleBase, geoip: [r.value] });
-        else if (r.type === 'geosite') rules.push({ ...ruleBase, geosite: [r.value] });
         else if (r.type === 'process_name') rules.push({ ...ruleBase, process_name: [r.value] });
+        else if (r.type === 'rule_set') {
+            // 生成可读的 Tag
+            let baseName = r.value.split('/').pop()?.replace(/\.(json|srs|list)$/i, '') || `rs-${rules.length}`;
+            baseName = baseName.replace(/[^a-zA-Z0-9_\-]/g, ''); // Sanitize
+
+            // 简单的唯一性处理：如果已存在同名 Tag，追加 index (虽然在转换器内部目前 ruleSets 数组主要靠 push，但为了严谨)
+            // 由于 SingBox `rule_set` 数组是独立的，我们需要避免 tag 重复。
+            // 这里简单策略：先生成 baseName。如果这里有重名隐患，可以加上 index。
+            // 考虑到标准模板几乎没有重名文件(不同目录同名文件除外)，为了绝对安全，我们可以 append index 或者检查已存在的 tags。
+            // 让我们检查 ruleSets 中是否已有该 tag。
+            let tag = baseName;
+            let counter = 1;
+            while (ruleSets.some(rs => rs.tag === tag)) {
+                tag = `${baseName}_${counter++}`;
+            }
+
+            ruleSets.push({
+                tag: tag,
+                type: 'remote',
+                format: 'source',
+                url: r.value,
+                download_detour: SING_BOX_CONFIG.groupNames.proxy
+            });
+            rules.push({ rule_set: tag, outbound: outbound });
+        }
     });
 
     // 兜底规则（Clash 的 MATCH 在 Singbox 里通常是利用 auto_detect_interface 或默认最后的 outbound，
@@ -105,6 +139,7 @@ export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): s
         ],
         outbounds: generatedOutbounds,
         route: {
+            rule_set: ruleSets.length > 0 ? ruleSets : undefined,
             rules: rules,
             auto_detect_interface: true,
             final: SING_BOX_CONFIG.groupNames.proxy // 明确指定兜底

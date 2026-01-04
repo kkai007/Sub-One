@@ -32,14 +32,18 @@ export function toSurge(nodes: ProxyNode[], options: ConverterOptions = {}): str
     lines.push('[Proxy Group]');
 
     // 基础策略组
-    // Proxy: 选择策略
-    lines.push(`${SURGE_CONFIG.groupNames.proxy} = select, ${tpl.groups.map(g => g.name).concat([SURGE_CONFIG.groupNames.direct]).join(', ')}, ${nodeNames.join(', ')}`);
+    // Proxy: 入口选择 (自动，手动，直连)
+    lines.push(`${SURGE_CONFIG.groupNames.proxy} = select, ${SURGE_CONFIG.groupNames.auto}, ${SURGE_CONFIG.groupNames.manual}, ${tpl.groups.map(g => g.name).join(', ')}, ${SURGE_CONFIG.groupNames.direct}`);
+    // Auto: 自动测速
+    lines.push(`${SURGE_CONFIG.groupNames.auto} = url-test, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600`);
+    // Manual: 手动选择
+    lines.push(`${SURGE_CONFIG.groupNames.manual} = select, ${nodeNames.join(', ')}`);
 
     // Template Groups
     tpl.groups.forEach(g => {
         const type = g.type === 'url-test' ? 'url-test' : 'select';
-        // 默认包含所有节点
-        let content = `${g.name} = ${type}, ${SURGE_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
+        // 包含 Proxy, Auto, Direct + Nodes
+        let content = `${g.name} = ${type}, ${SURGE_CONFIG.groupNames.proxy}, ${SURGE_CONFIG.groupNames.auto}, ${SURGE_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}`;
         if (g.type === 'url-test') {
             content += `, url=${DEFAULT_TEST_URL}, interval=600`;
         }

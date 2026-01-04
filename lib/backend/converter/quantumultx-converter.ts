@@ -29,14 +29,19 @@ export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}
     // static=Proxy, direct, proxy, img-url=...
     // url-latency-benchmark=Auto,…
 
+
     // 基础策略组
-    lines.push(`static=${QX_CONFIG.groupNames.proxy}, ${tpl.groups.map(g => g.name).concat([QX_CONFIG.groupNames.direct]).join(', ')}, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png`);
+    // Manual: 手动选择 (所有节点)
+    lines.push(`static=${QX_CONFIG.groupNames.manual}, ${nodeNames.join(', ')}, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png`);
+    // Auto: 自动选择 (所有节点, 测速)
     lines.push(`url-latency-benchmark=${QX_CONFIG.groupNames.auto}, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600, tolerance=50, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Auto.png`);
+    // Proxy: 节点选择 (Auto, Manual, Direct) - 注意 QX 引用策略组不需要特殊前缀，直接写名字
+    lines.push(`static=${QX_CONFIG.groupNames.proxy}, ${QX_CONFIG.groupNames.auto}, ${QX_CONFIG.groupNames.manual}, ${tpl.groups.map(g => g.name).join(', ')}, ${QX_CONFIG.groupNames.direct}, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png`);
 
     // Template Groups
     tpl.groups.forEach(g => {
         if (g.type === 'url-test') {
-            lines.push(`url-latency-benchmark=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600, tolerance=50`);
+            lines.push(`url-latency-benchmark=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${QX_CONFIG.groupNames.manual}, ${QX_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}, url=${DEFAULT_TEST_URL}, interval=600, tolerance=50`);
         } else {
             // select / fallback
             lines.push(`static=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${QX_CONFIG.groupNames.auto}, ${QX_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}`);
@@ -55,6 +60,7 @@ export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}
         if (target === 'Direct') target = QX_CONFIG.groupNames.direct;
         if (target === 'Reject') target = 'reject';
         if (target === 'Auto') target = QX_CONFIG.groupNames.auto;
+        if (target === 'Manual') target = QX_CONFIG.groupNames.manual;
 
         if (r.type === 'domain') filterLocal.push(`host, ${r.value}, ${target}`);
         else if (r.type === 'domain_suffix') filterLocal.push(`host-suffix, ${r.value}, ${target}`);
