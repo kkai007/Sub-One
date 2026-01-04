@@ -130,7 +130,8 @@ export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): str
     return yaml.dump(config, {
         indent: 2,
         lineWidth: -1,
-        noRefs: true // 禁止 YAML 引用
+        noRefs: true, // 禁止 YAML 引用
+        flowLevel: 2  // 使用紧凑的 Flow (JSON-like) 格式输出节点和策略组
     });
 }
 
