@@ -50,7 +50,7 @@ export interface BaseNode {
     subscriptionName?: string; // 来源订阅名称
     originalUrl?: string;      // 原始链接 (用于回溯)
     url?: string;              // 标准化链接 (Runtime generate)
-    originalProxy?: any;       // 原始代理对象 (Clash etc)
+    originalProxy?: Record<string, unknown>;       // 原始代理对象 (Clash etc)
 }
 
 /**
@@ -109,6 +109,7 @@ export interface VlessNode extends BaseNode {
     type: 'vless';
     uuid: string;
     flow?: string;              // xtls-rprx-vision 等
+    encryption?: string;        // encryption=none 等
     transport?: TransportOptions;
     tls?: TlsOptions;           // 必须支持 Reality
 }
@@ -197,8 +198,22 @@ export interface SnellNode extends BaseNode {
     };
 }
 
+export interface HttpNode extends BaseNode {
+    type: 'http';
+    username?: string;
+    password?: string;
+    tls?: TlsOptions; // HTTP over TLS (HTTPS proxy)
+}
+
+export interface Socks5Node extends BaseNode {
+    type: 'socks5';
+    username?: string;
+    password?: string;
+    tls?: TlsOptions; // SOCKS5 over TLS
+}
+
 // 统一节点类型 (Discriminated Union)
-export type Node =
+export type ProxyNode =
     | VmessNode
     | VlessNode
     | TrojanNode
@@ -210,8 +225,146 @@ export type Node =
     | TuicNode
     | WireGuardNode
     | SnellNode
+    | HttpNode
+    | Socks5Node
     // 兼容未知类型，防止解析器崩溃
-    | (BaseNode & { type: 'unknown' | 'socks5' | 'http';[key: string]: any });
+    | (BaseNode & { type: 'unknown';[key: string]: unknown });
+
+// 为兼容性保留 Node 别名 (可能仍有冲突，建议逐步迁移)
+export type Node = ProxyNode;
+
+// ==================== 转换器专用配置类型 ====================
+
+/**
+ * Clash 代理项配置 (Meta/Premium)
+ */
+export interface ClashProxyConfig {
+    name: string;
+    type: string;
+    server: string;
+    port: number | string;
+    remarks?: string;
+    id?: string;
+    aid?: number | string;
+    markup?: string;
+    udp?: boolean;
+    tls?: boolean;
+    servername?: string;
+    sni?: string;
+    alpn?: string[];
+    'skip-cert-verify'?: boolean;
+    'client-fingerprint'?: string;
+    fingerprint?: string;
+    network?: NetworkType;
+    uuid?: string;
+    alterId?: number | string;
+    cipher?: string;
+    flow?: string;
+    password?: string;
+    psk?: string;
+    version?: string;
+    plugin?: string;
+    'plugin-opts'?: Record<string, string>;
+    'obfs-opts'?: {
+        mode?: string;
+        host?: string;
+    };
+    'ws-opts'?: {
+        path?: string;
+        headers?: Record<string, string>;
+    };
+    'grpc-opts'?: {
+        'grpc-service-name'?: string;
+        mode?: string;
+    };
+    'h2-opts'?: {
+        path?: string;
+        host?: string[];
+    };
+    'reality-opts'?: {
+        'public-key': string;
+        'short-id': string;
+        'spider-x'?: string;
+    };
+    'congestion-controller'?: string;
+    'udp-relay-mode'?: string;
+    'idle-timeout'?: number | string;
+    username?: string;
+    [key: string]: unknown;
+}
+
+/**
+ * Sing-Box 出站配置 (Partial)
+ */
+export interface SingBoxOutbound {
+    type: string;
+    tag: string;
+    server?: string;
+    server_port?: number;
+    uuid?: string;
+    security?: string;
+    alter_id?: number;
+    password?: string;
+    method?: string;
+    plugin?: string;
+    plugin_opts?: string;
+    auth_str?: string;
+    up_mbps?: number;
+    down_mbps?: number;
+    obfs?: string | {
+        type: string;
+        password?: string;
+    };
+    protocol?: string;
+    congestion_control?: string;
+    udp_relay_mode?: string;
+    private_key?: string;
+    peer_public_key?: string;
+    pre_shared_key?: string;
+    local_address?: string[];
+    mtu?: number;
+    tls?: {
+        enabled: boolean;
+        server_name?: string;
+        insecure?: boolean;
+        alpn?: string[];
+        reality?: {
+            enabled: boolean;
+            public_key: string;
+            short_id: string;
+        };
+    };
+    transport?: {
+        type: string;
+        path?: string;
+        headers?: Record<string, string>;
+        service_name?: string;
+        host?: string[];
+    };
+    [key: string]: unknown;
+}
+
+/**
+ * V2rayN (VMess) Base64 内部 JSON 结构
+ */
+export interface V2rayNConfig {
+    v: string;
+    ps: string;
+    add: string;
+    port: number | string;
+    id: string;
+    aid: number | string;
+    scy: string;
+    net: string;
+    type: string;
+    host?: string;
+    path?: string;
+    tls: string;
+    sni?: string;
+    alpn?: string;
+    fp?: string;
+    allowInsecure?: boolean;
+}
 
 
 // ==================== 接口定义 (兼容旧代码) ====================

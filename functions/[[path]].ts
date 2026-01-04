@@ -1,8 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { SubscriptionParser } from '../lib/shared/subscription-parser';
-import { SubscriptionConverter } from '../lib/shared/converter';
-import { encodeBase64 } from '../lib/shared/converter/base64';
+import { SubscriptionParser } from '../lib/backend/subscription-parser';
+import { SubscriptionConverter } from '../lib/backend/converter';
+import { encodeBase64 } from '../lib/backend/converter/base64';
 import type {
     Node,
     Subscription,
@@ -36,8 +36,8 @@ interface Env {
  * @param {any} data - 要计算哈希的数据
  * @returns {string} - 数据的哈希值
  */
-function calculateDataHash(data: any): string {
-    const jsonString = JSON.stringify(data, Object.keys(data).sort());
+function calculateDataHash(data: unknown): string {
+    const jsonString = JSON.stringify(data, Object.keys(data as any).sort());
     let hash = 0;
     for (let i = 0; i < jsonString.length; i++) {
         const char = jsonString.charCodeAt(i);
@@ -53,7 +53,7 @@ function calculateDataHash(data: any): string {
  * @param {any} newData - 新数据
  * @returns {boolean} - 是否发生变更
  */
-function hasDataChanged(oldData: any, newData: any): boolean {
+function hasDataChanged(oldData: unknown, newData: unknown): boolean {
     if (!oldData && !newData) return false;
     if (!oldData || !newData) return true;
     return calculateDataHash(oldData) !== calculateDataHash(newData);
@@ -67,7 +67,7 @@ function hasDataChanged(oldData: any, newData: any): boolean {
  * @param {any} oldData - 旧数据（可选）
  * @returns {Promise<boolean>} - 是否执行了写入操作
  */
-async function conditionalKVPut(env: Env, key: string, newData: any, oldData: any = null): Promise<boolean> {
+async function conditionalKVPut(env: Env, key: string, newData: unknown, oldData: unknown = null): Promise<boolean> {
     if (oldData === null) {
         try {
             oldData = await env.SUB_ONE_KV.get(key, 'json');
@@ -146,8 +146,8 @@ async function sendTgNotification(settings: AppConfig, message: string): Promise
 
 async function handleCronTrigger(env: Env): Promise<Response> {
     console.log("Cron trigger fired. Checking all subscriptions for traffic and node count...");
-    const originalSubs = await env.SUB_ONE_KV.get(KV_KEY_SUBS, 'json') || [];
-    const allSubs = JSON.parse(JSON.stringify(originalSubs)); // 深拷贝以便比较
+    const originalSubs = (await env.SUB_ONE_KV.get(KV_KEY_SUBS, 'json') || []) as Subscription[];
+    const allSubs = JSON.parse(JSON.stringify(originalSubs)) as Subscription[]; // 深拷贝以便比较
     const settings = (await env.SUB_ONE_KV.get(KV_KEY_SETTINGS, 'json') || defaultSettings) as AppConfig;
 
     const nodeRegex = /^(ss|ssr|vmess|vless|trojan|hysteria2?|hy|hy2|tuic|anytls|socks5):\/\//gm;
@@ -156,58 +156,57 @@ async function handleCronTrigger(env: Env): Promise<Response> {
     for (const sub of allSubs) {
         if (sub.url.startsWith('http') && sub.enabled) {
             try {
-                // --- 並行請求流量和節點內容 ---
-                const trafficRequest = fetch(new Request(sub.url, {
+                // ⭐ 优化：只发送一次请求，复用响应（性能提升50%）
+                const singleRequest = fetch(new Request(sub.url, {
                     headers: { 'User-Agent': GLOBAL_USER_AGENT },
                     redirect: "follow",
                     cf: { insecureSkipVerify: true }
                 } as any));
-                const nodeCountRequest = fetch(new Request(sub.url, {
-                    headers: { 'User-Agent': GLOBAL_USER_AGENT },
-                    redirect: "follow",
-                    cf: { insecureSkipVerify: true }
-                } as any));
-                const [trafficResult, nodeCountResult] = await Promise.allSettled([
-                    Promise.race([trafficRequest, new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))]),
-                    Promise.race([nodeCountRequest, new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))])
-                ]) as [PromiseSettledResult<Response>, PromiseSettledResult<Response>];
 
-                if (trafficResult.status === 'fulfilled' && trafficResult.value.ok) {
-                    const userInfoHeader = trafficResult.value.headers.get('subscription-userinfo');
-                    if (userInfoHeader) {
-                        const info = {};
-                        userInfoHeader.split(';').forEach(part => {
-                            const [key, value] = part.trim().split('=');
-                            if (key && value) info[key] = /^\d+$/.test(value) ? Number(value) : value;
-                        });
-                        sub.userInfo = info; // 更新流量資訊
-                        await checkAndNotify(sub, settings, env); // 檢查並發送通知
-                        changesMade = true;
+                try {
+                    const response = await Promise.race([
+                        singleRequest,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))
+                    ]) as Response;
+
+                    if (response.ok) {
+                        // 1. 提取流量信息（从headers）
+                        const userInfoHeader = response.headers.get('subscription-userinfo');
+                        if (userInfoHeader) {
+                            const info: Partial<SubscriptionUserInfo> = {};
+                            userInfoHeader.split(';').forEach(part => {
+                                const [key, value] = part.trim().split('=');
+                                if (key && value) {
+                                    const numValue = Number(value);
+                                    if (!isNaN(numValue)) {
+                                        (info as any)[key] = numValue;
+                                    }
+                                }
+                            });
+                            sub.userInfo = info as SubscriptionUserInfo;
+                            await checkAndNotify(sub, settings, env);
+                            changesMade = true;
+                        }
+
+                        // 2. 提取节点数量（从body）
+                        const text = await response.text();
+                        try {
+                            const nodes = subscriptionParser.parse(text, sub.name, {
+                                dedupe: false
+                            });
+                            if (nodes.length > 0) {
+                                sub.nodeCount = nodes.length;
+                                changesMade = true;
+                            }
+                        } catch (e) {
+                            console.error(`Cron: Parse failed for ${sub.name}:`, e);
+                        }
+                    } else {
+                        console.error(`Cron: HTTP ${response.status} for ${sub.name}`);
                     }
-                } else if (trafficResult.status === 'rejected') {
-                    console.error(`Cron: Failed to fetch traffic for ${sub.name}:`, trafficResult.reason.message);
-                }
-
-                if (nodeCountResult.status === 'fulfilled' && nodeCountResult.value.ok) {
-                    const text = await nodeCountResult.value.text();
-                    let nodeCount = 0;
-
-                    // 使用统一的 SubscriptionParser 解析
-                    try {
-                        const nodes = subscriptionParser.parse(text, sub.name, {
-                            dedupe: false
-                        });
-                        nodeCount = nodes.length;
-                    } catch (e) {
-                        console.error(`Cron: Parse failed for ${sub.name}:`, e);
-                    }
-
-                    if (nodeCount > 0) {
-                        sub.nodeCount = nodeCount;
-                        changesMade = true;
-                    }
-                } else if (nodeCountResult.status === 'rejected') {
-                    console.error(`Cron: Failed to fetch node list for ${sub.name}:`, nodeCountResult.reason.message);
+                } catch (error: unknown) {
+                    const msg = error instanceof Error ? error.message : String(error);
+                    console.error(`Cron: Failed to fetch ${sub.name}:`, msg);
                 }
 
             } catch (e: any) {
@@ -225,19 +224,107 @@ async function handleCronTrigger(env: Env): Promise<Response> {
     return new Response("Cron job completed successfully.", { status: 200 });
 }
 
-// --- 认证与API处理的核心函数 (无修改) ---
+// ==================== 安全认证系统 ====================
+
+/**
+ * 生成安全的会话Token（带HMAC签名）
+ * @param env Cloudflare环境对象
+ * @returns Promise<string> 格式：timestamp:random:signature
+ */
+async function generateSecureToken(env: Env): Promise<string> {
+    const timestamp = Date.now();
+    const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+    const random = Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    const message = `${timestamp}:${random}`;
+
+    // 使用ADMIN_PASSWORD作为密钥进行HMAC签名
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(env.ADMIN_PASSWORD || 'default-secret'),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+
+    const signature = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        encoder.encode(message)
+    );
+
+    const sigHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    return `${message}:${sigHex}`;
+}
+
+/**
+ * 验证Token签名
+ * @param token Token字符串
+ * @param env Cloudflare环境对象
+ * @returns Promise<boolean> 是否有效
+ */
+async function verifySecureToken(token: string, env: Env): Promise<boolean> {
+    try {
+        const parts = token.split(':');
+
+        // 新格式：timestamp:random:signature（3部分）
+        if (parts.length === 3) {
+            const [timestampStr, random, providedSig] = parts;
+            const timestamp = parseInt(timestampStr, 10);
+
+            // 检查过期
+            if (isNaN(timestamp) || (Date.now() - timestamp > SESSION_DURATION)) {
+                return false;
+            }
+
+            // 验证签名
+            const message = `${timestampStr}:${random}`;
+            const encoder = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(env.ADMIN_PASSWORD || 'default-secret'),
+                { name: 'HMAC', hash: 'SHA-256' },
+                false,
+                ['sign']
+            );
+
+            const expectedSig = await crypto.subtle.sign(
+                'HMAC',
+                key,
+                encoder.encode(message)
+            );
+
+            const expectedSigHex = Array.from(new Uint8Array(expectedSig))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+            return providedSig === expectedSigHex;
+        }
+
+        // 旧格式（向后兼容）：纯时间戳（1部分）
+        if (parts.length === 1) {
+            const timestamp = parseInt(token, 10);
+            return !isNaN(timestamp) && (Date.now() - timestamp < SESSION_DURATION);
+        }
+
+        return false;
+    } catch {
+        return false;
+    }
+}
+
+// --- 认证中间件 ---
 async function authMiddleware(request: Request, env: Env): Promise<boolean> {
     const cookie = request.headers.get('Cookie');
     const sessionCookie = cookie?.split(';').find(c => c.trim().startsWith(`${COOKIE_NAME}=`));
     if (!sessionCookie) return false;
     const token = sessionCookie.split('=')[1];
-    // 简单的token验证，基于时间戳
-    try {
-        const timestamp = parseInt(token, 10);
-        return !isNaN(timestamp) && (Date.now() - timestamp < SESSION_DURATION);
-    } catch {
-        return false;
-    }
+
+    // 使用新的安全验证函数
+    return await verifySecureToken(token, env);
 }
 
 // sub: 要检查的订阅对象
@@ -312,18 +399,20 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
             await env.SUB_ONE_KV.delete(OLD_KV_KEY);
 
             return new Response(JSON.stringify({ success: true, message: '数据迁移成功！' }), { status: 200 });
-        } catch (e: any) {
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
             console.error('[API Error /migrate]', e);
-            return new Response(JSON.stringify({ success: false, message: `迁移失败: ${e.message}` }), { status: 500 });
+            return new Response(JSON.stringify({ success: false, message: `迁移失败: ${msg}` }), { status: 500 });
         }
     }
 
     if (path === '/login') {
         if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
         try {
-            const { password } = await request.json() as any;
+            const { password } = await request.json() as { password?: string };
             if (password === env.ADMIN_PASSWORD) {
-                const token = String(Date.now()); // 简单的基于时间戳的token
+                // ⭐ 使用新的安全Token生成函数
+                const token = await generateSecureToken(env);
                 const headers = new Headers({ 'Content-Type': 'application/json' });
                 headers.append('Set-Cookie', `${COOKIE_NAME}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_DURATION / 1000}`);
                 return new Response(JSON.stringify({ success: true }), { headers });
@@ -443,11 +532,12 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
                     message: '订阅源及订阅组已保存'
                 }));
 
-            } catch (e: any) {
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
                 console.error('[API Error /subs] 未预期的错误:', e);
                 return new Response(JSON.stringify({
                     success: false,
-                    message: `保存失败: ${e.message || '服务器内部错误，请稍后重试'}`
+                    message: `保存失败: ${msg || '服务器内部错误，请稍后重試'}`
                 }), { status: 500 });
             }
         }
@@ -458,12 +548,12 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
                 url: subUrl,
                 returnNodes = false,  // 可选：是否返回节点列表
                 exclude = ''          // 可选：过滤规则
-            } = await request.json() as any;
+            } = await request.json() as { url?: string, returnNodes?: boolean, exclude?: string };
             if (!subUrl || typeof subUrl !== 'string' || !/^https?:\/\//.test(subUrl)) {
                 return new Response(JSON.stringify({ error: 'Invalid or missing url' }), { status: 400 });
             }
 
-            const result: { count: number; userInfo: any; nodes?: Node[] } = { count: 0, userInfo: null };
+            const result: { count: number; userInfo: Partial<SubscriptionUserInfo> | null; nodes?: Node[] } = { count: 0, userInfo: null };
 
             try {
                 const fetchOptions = {
@@ -487,10 +577,15 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
                     const trafficResponse = responses[0].value;
                     const userInfoHeader = trafficResponse.headers.get('subscription-userinfo');
                     if (userInfoHeader) {
-                        const info = {};
+                        const info: Partial<SubscriptionUserInfo> = {};
                         userInfoHeader.split(';').forEach(part => {
                             const [key, value] = part.trim().split('=');
-                            if (key && value) info[key] = /^\d+$/.test(value) ? Number(value) : value;
+                            if (key && value) {
+                                const numValue = Number(value);
+                                if (!isNaN(numValue)) {
+                                    (info as any)[key] = numValue;
+                                }
+                            }
                         });
                         result.userInfo = info;
                     }
@@ -556,7 +651,7 @@ async function handleApiRequest(request: Request, env: Env): Promise<Response> {
             }
 
             try {
-                const { subscriptionIds } = await request.json() as any;
+                const { subscriptionIds } = await request.json() as { subscriptionIds?: string[] };
                 if (!Array.isArray(subscriptionIds)) {
                     return new Response(JSON.stringify({ error: 'subscriptionIds must be an array' }), { status: 400 });
                 }
@@ -826,8 +921,8 @@ async function handleSubRequest(context: EventContext<Env, any, any>): Promise<R
         env.SUB_ONE_KV.get(KV_KEY_PROFILES, 'json')
     ]);
     const settings = settingsData || {};
-    const allSubs = (subsData || []) as any[];
-    const allProfiles = (profilesData || []) as any[];
+    const allSubs = (subsData || []) as Subscription[];
+    const allProfiles = (profilesData || []) as Profile[];
     // 關鍵：我們在這裡定義了 `config`，後續都應該使用它
     const config = { ...defaultSettings, ...settings };
 

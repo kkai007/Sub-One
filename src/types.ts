@@ -14,7 +14,7 @@
 // ==================== 统一类型引用 (Single Source of Truth) ====================
 // 核心数据结构直接复用 lib/shared/types
 import type {
-    Node as SharedNode,
+    ProxyNode as SharedProxyNode,
     Subscription as SharedSubscription,
     Profile as SharedProfile,
     AppConfig as SharedAppConfig,
@@ -45,9 +45,9 @@ export type SubscriptionUserInfo = SharedUserInfo;
 // ==================== 节点接口扩展 ====================
 /**
  * 节点（Node）接口定义 - 前端扩展版
- * 继承自共享 Node 定义，并添加前端 UI 所需字段
+ * 继承自共享 ProxyNode 定义，并添加前端 UI 所需字段
  */
-export type Node = SharedNode & {
+export type Node = SharedProxyNode & {
     /** 旧版协议类型字段 (兼容性保留，指向 type) */
     protocol?: ProtocolType;
     /** 启用状态 (UI控制) */
@@ -55,7 +55,7 @@ export type Node = SharedNode & {
     /** 原始代理配置对象 (兼容旧逻辑) */
     originalProxy?: Record<string, unknown>;
 
-    // 前端可能用到但 SharedNode 中可能是特定协议才有的字段，
+    // 前端可能用到但 SharedProxyNode 中可能是特定协议才有的字段，
     // 在此声明为可选以方便 UI 统一访问 (如列表中展示 cipher)
     cipher?: string;
     uuid?: string;
