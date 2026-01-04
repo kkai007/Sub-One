@@ -63,7 +63,9 @@ export const SURGE_CONFIG = {
         'skip-proxy': DEFAULT_SKIP_PROXY.join(', ')
     },
     groupNames: {
-        proxy: 'Proxy'
+        proxy: 'Proxy',
+        auto: 'UrlTest',     // Surge 习惯叫 UrlTest 或 Auto
+        direct: 'DIRECT'
     }
 };
 
@@ -75,7 +77,9 @@ export const LOON_CONFIG = {
         'dns-server': DEFAULT_DNS.join(', ')
     },
     groupNames: {
-        proxy: 'Proxy'
+        proxy: 'Proxy',
+        auto: 'Auto',
+        direct: 'DIRECT'
     }
 };
 
@@ -84,6 +88,8 @@ export const LOON_CONFIG = {
 export const QX_CONFIG = {
     dns: DEFAULT_DNS.join(', '),
     groupNames: {
-        proxy: 'Proxy'
+        proxy: 'Proxy',
+        auto: 'Auto',
+        direct: 'direct' // QX 小写
     }
 };

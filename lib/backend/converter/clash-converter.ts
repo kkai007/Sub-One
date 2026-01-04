@@ -1,35 +1,96 @@
 import * as yaml from 'js-yaml';
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode, Hysteria2Node, TuicNode, AnyTLSNode, SnellNode, TransportOptions, TlsOptions, HttpNode, Socks5Node, ClashProxyConfig } from '../../shared/types';
-import { CLASH_CONFIG } from './config';
+import { CLASH_CONFIG } from '../config/config';
+import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
 /**
  * 转换为 Clash Meta YAML 配置
  * 纯粹的数据映射，不解析 URL
  */
-export function toClash(nodes: ProxyNode[], _options: ConverterOptions = {}): string {
+export function toClash(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const proxies = nodes
         .map(node => nodeToClashProxy(node))
         .filter(p => p !== null);
 
+    // 获取选择的规则模板，默认为 Minimal
+    const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
+
+    // 基础策略组名称映射 (用于 UniversalRule target 映射)
+    const baseGroupMap: Record<string, string> = {
+        'Proxy': CLASH_CONFIG.groupNames.select,
+        'Auto': CLASH_CONFIG.groupNames.auto,
+        'Direct': CLASH_CONFIG.groupNames.direct,
+        'Reject': 'REJECT'
+    };
+
+    // 1. 构建所有策略组
+    // 始终包含基础的 Select, Auto, Direct
+    const proxyGroups: any[] = [
+        {
+            name: CLASH_CONFIG.groupNames.select,
+            type: 'select',
+            proxies: [CLASH_CONFIG.groupNames.auto, ...tpl.groups.map(g => g.name), CLASH_CONFIG.groupNames.direct, ...proxies.map(p => p.name)]
+        },
+        {
+            name: CLASH_CONFIG.groupNames.auto,
+            type: 'url-test',
+            proxies: proxies.map(p => p.name),
+            url: CLASH_CONFIG.testUrl,
+            interval: 300,
+            tolerance: 50
+        },
+        {
+            name: CLASH_CONFIG.groupNames.direct,
+            type: 'select',
+            proxies: ['DIRECT']
+        }
+    ];
+
+    // 添加模板定义的额外策略组
+    tpl.groups.forEach(g => {
+        proxyGroups.push({
+            name: g.name,
+            type: g.type,
+            icon: g.icon,
+            // 默认包含所有节点 + 自动选择 + 直连
+            proxies: [CLASH_CONFIG.groupNames.select, CLASH_CONFIG.groupNames.auto, CLASH_CONFIG.groupNames.direct, ...proxies.map(p => p.name)]
+        });
+    });
+
+    // 2. 构建规则列表
+    const rules: string[] = [];
+
+    // 遍历模板规则
+    tpl.rules.forEach(r => {
+        let target = r.target;
+        // 映射 Target (Proxy/Direct -> 具体组名)
+        if (baseGroupMap[target]) {
+            target = baseGroupMap[target];
+        }
+
+        // 转换规则类型
+        if (r.type === 'domain') rules.push(`DOMAIN,${r.value},${target}`);
+        else if (r.type === 'domain_suffix') rules.push(`DOMAIN-SUFFIX,${r.value},${target}`);
+        else if (r.type === 'domain_keyword') rules.push(`DOMAIN-KEYWORD,${r.value},${target}`);
+        else if (r.type === 'ip_cidr') {
+            rules.push(`IP-CIDR,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        }
+        else if (r.type === 'geoip') {
+            rules.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        }
+        else if (r.type === 'geosite') {
+            rules.push(`GEOSITE,${r.value},${target}`);
+        }
+        else if (r.type === 'process_name') {
+            rules.push(`PROCESS-NAME,${r.value},${target}`);
+        }
+    });
+
+    // 最终兜底规则
+    rules.push(`MATCH,${CLASH_CONFIG.groupNames.select}`);
+
     // 构建配置结构
-    const config: {
-        port: number;
-        'socks-port': number;
-        'allow-lan': boolean;
-        mode: string;
-        'log-level': string;
-        'external-controller': string;
-        proxies: ClashProxyConfig[];
-        'proxy-groups': {
-            name: string;
-            type: string;
-            proxies: string[];
-            url?: string;
-            interval?: number;
-            tolerance?: number;
-        }[];
-        rules: string[];
-    } = {
+    const config = {
         port: CLASH_CONFIG.port,
         'socks-port': CLASH_CONFIG['socks-port'],
         'allow-lan': CLASH_CONFIG['allow-lan'],
@@ -37,30 +98,8 @@ export function toClash(nodes: ProxyNode[], _options: ConverterOptions = {}): st
         'log-level': CLASH_CONFIG['log-level'],
         'external-controller': CLASH_CONFIG['external-controller'],
         proxies: proxies,
-        'proxy-groups': [
-            {
-                name: CLASH_CONFIG.groupNames.select,
-                type: 'select',
-                proxies: [CLASH_CONFIG.groupNames.auto, CLASH_CONFIG.groupNames.direct, ...proxies.map(p => p.name)]
-            },
-            {
-                name: CLASH_CONFIG.groupNames.auto,
-                type: 'url-test',
-                proxies: proxies.map(p => p.name),
-                url: CLASH_CONFIG.testUrl,
-                interval: 300,
-                tolerance: 50
-            },
-            {
-                name: CLASH_CONFIG.groupNames.direct,
-                type: 'select',
-                proxies: ['DIRECT']
-            }
-        ],
-        rules: [
-            `GEOIP,CN,${CLASH_CONFIG.groupNames.direct}`,
-            `MATCH,${CLASH_CONFIG.groupNames.select}`
-        ]
+        'proxy-groups': proxyGroups,
+        rules: rules
     };
 
     return yaml.dump(config, {

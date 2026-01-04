@@ -1,13 +1,86 @@
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode, HysteriaNode, Hysteria2Node, TuicNode, WireGuardNode, AnyTLSNode, TransportOptions, TlsOptions, HttpNode, Socks5Node, SingBoxOutbound } from '../../shared/types';
-import { SING_BOX_CONFIG } from './config';
+import { SING_BOX_CONFIG } from '../config/config';
+import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
 /**
  * 转换为 Sing-Box JSON 配置
  */
-export function toSingBox(nodes: ProxyNode[], _options: ConverterOptions = {}): string {
+export function toSingBox(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const outbounds = nodes
         .map(node => nodeToSingBoxOutbound(node))
         .filter((o): o is SingBoxOutbound => o !== null);
+
+    // 获取规则模板
+    const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
+
+    // 基础 Tag 映射
+    const baseGroupMap: Record<string, string> = {
+        'Proxy': SING_BOX_CONFIG.groupNames.proxy,
+        'Auto': SING_BOX_CONFIG.groupNames.auto,
+        'Direct': SING_BOX_CONFIG.groupNames.direct,
+        'Reject': 'block'
+    };
+
+    // 1. 构建出站 (Outbounds)
+    // 基础出站
+    const generatedOutbounds: any[] = [
+        {
+            tag: SING_BOX_CONFIG.groupNames.proxy,
+            type: 'selector',
+            outbounds: [SING_BOX_CONFIG.groupNames.auto, ...tpl.groups.map(g => g.name), SING_BOX_CONFIG.groupNames.direct, ...outbounds.map(o => o.tag)]
+        },
+        {
+            tag: SING_BOX_CONFIG.groupNames.auto,
+            type: 'urltest',
+            outbounds: outbounds.map(o => o.tag),
+            url: 'http://www.gstatic.com/generate_204',
+            interval: '10m',
+            tolerance: 50
+        },
+        { type: 'direct', tag: SING_BOX_CONFIG.groupNames.direct },
+        { type: 'block', tag: 'block' },
+        { type: 'dns', tag: 'dns-out' },
+        ...outbounds
+    ];
+
+    // 添加模板定义的额外策略组
+    tpl.groups.forEach(g => {
+        generatedOutbounds.splice(2, 0, { // 插入到 Direct 之前
+            tag: g.name,
+            type: g.type === 'url-test' ? 'urltest' : 'selector',
+            outbounds: [SING_BOX_CONFIG.groupNames.proxy, SING_BOX_CONFIG.groupNames.auto, SING_BOX_CONFIG.groupNames.direct, ...outbounds.map(o => o.tag)],
+            // 如果是 urltest 类型，需要添加检测配置
+            ...(g.type === 'url-test' ? { url: 'http://www.gstatic.com/generate_204', interval: '10m', tolerance: 50 } : {})
+        });
+    });
+
+    // 2. 构建路由规则 (Route Rules)
+    const rules: any[] = [
+        { protocol: 'dns', outbound: 'dns-out' }
+    ];
+
+    // 遍历模板规则
+    tpl.rules.forEach(r => {
+        let outbound = r.target;
+        if (baseGroupMap[outbound]) {
+            outbound = baseGroupMap[outbound];
+        }
+
+        const ruleBase = { outbound };
+
+        if (r.type === 'domain') rules.push({ ...ruleBase, domain: [r.value] });
+        else if (r.type === 'domain_suffix') rules.push({ ...ruleBase, domain_suffix: [r.value] });
+        else if (r.type === 'domain_keyword') rules.push({ ...ruleBase, domain_keyword: [r.value] });
+        else if (r.type === 'ip_cidr') rules.push({ ...ruleBase, ip_cidr: [r.value] });
+        else if (r.type === 'geoip') rules.push({ ...ruleBase, geoip: [r.value] });
+        else if (r.type === 'geosite') rules.push({ ...ruleBase, geosite: [r.value] });
+        else if (r.type === 'process_name') rules.push({ ...ruleBase, process_name: [r.value] });
+    });
+
+    // 兜底规则（Clash 的 MATCH 在 Singbox 里通常是利用 auto_detect_interface 或默认最后的 outbound，
+    // 但为了明确，我们可以不加最后一条，让 Singbox 默认回退到第一个 outbound 也就是 Proxy）
+
+    // Sing-Box 总是会自动使用第一个 outbound 作为默认，所以 Proxy 放在第一个很重要。
 
     const config = {
         log: { level: 'info' },
@@ -30,32 +103,11 @@ export function toSingBox(nodes: ProxyNode[], _options: ConverterOptions = {}): 
                 sniff: true
             }
         ],
-        outbounds: [
-            {
-                tag: SING_BOX_CONFIG.groupNames.proxy,
-                type: 'selector',
-                outbounds: [SING_BOX_CONFIG.groupNames.auto, SING_BOX_CONFIG.groupNames.direct, ...outbounds.map(o => o.tag)]
-            },
-            {
-                tag: SING_BOX_CONFIG.groupNames.auto,
-                type: 'urltest',
-                outbounds: outbounds.map(o => o.tag),
-                url: 'http://www.gstatic.com/generate_204',
-                interval: '10m',
-                tolerance: 50
-            },
-            { type: 'direct', tag: SING_BOX_CONFIG.groupNames.direct },
-            { type: 'block', tag: 'block' },
-            { type: 'dns', tag: 'dns-out' },
-            ...outbounds
-        ],
+        outbounds: generatedOutbounds,
         route: {
-            rules: [
-                { protocol: 'dns', outbound: 'dns-out' },
-                { geosite: 'cn', outbound: SING_BOX_CONFIG.groupNames.direct },
-                { geoip: 'cn', outbound: SING_BOX_CONFIG.groupNames.direct }
-            ],
-            auto_detect_interface: true
+            rules: rules,
+            auto_detect_interface: true,
+            final: SING_BOX_CONFIG.groupNames.proxy // 明确指定兜底
         }
     };
 

@@ -403,6 +403,7 @@ export interface Profile {
     filter?: string;
     token?: string;
     customId?: string;
+    ruleTemplate?: string; // 选用的规则模板 ID
     expiresAt?: string;
     createdAt?: number;
     updatedAt?: number;
@@ -424,6 +425,7 @@ export interface AppConfig {
 export interface ConverterOptions {
     filename?: string;
     includeRules?: boolean;
+    ruleTemplate?: string; // 传递给转换器的规则模板 ID
     remoteConfig?: string;
     userInfo?: {
         upload?: number;

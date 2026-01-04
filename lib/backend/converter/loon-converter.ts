@@ -1,11 +1,13 @@
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode, Hysteria2Node, TuicNode, WireGuardNode, SnellNode } from '../../shared/types';
-import { LOON_CONFIG } from './config';
+import { LOON_CONFIG } from '../config/config';
+import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
 /**
  * 转换为 Loon 配置
  */
-export function toLoon(nodes: ProxyNode[], _options: ConverterOptions = {}): string {
+export function toLoon(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const lines: string[] = [];
+    const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
 
     lines.push('[General]');
     Object.entries(LOON_CONFIG.general).forEach(([key, value]) => {
@@ -14,18 +16,56 @@ export function toLoon(nodes: ProxyNode[], _options: ConverterOptions = {}): str
     lines.push('');
     lines.push('[Proxy]');
 
+    const nodeNames: string[] = [];
     for (const node of nodes) {
         const line = nodeToLoonLine(node);
         if (line) {
             lines.push(line);
+            nodeNames.push(node.name);
         }
     }
 
     lines.push('');
     lines.push('[Proxy Group]');
-    lines.push(`${LOON_CONFIG.groupNames.proxy} = select,` + nodes.map(n => n.name).join(','));
+
+    // 基础策略组
+    lines.push(`${LOON_CONFIG.groupNames.proxy} = select, ${tpl.groups.map(g => g.name).concat([LOON_CONFIG.groupNames.direct]).join(', ')}, ${nodeNames.join(', ')}`);
+
+    // Template Groups
+    tpl.groups.forEach(g => {
+        const type = g.type === 'url-test' ? 'url-test' : 'select';
+        // 默认包含所有节点
+        let content = `${g.name} = ${type}, ${LOON_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
+        if (g.type === 'url-test') {
+            content += `, url=http://www.gstatic.com/generate_204, interval=600`;
+        }
+        lines.push(content);
+    });
+
     lines.push('');
     lines.push('[Rule]');
+
+    // Template Rules
+    tpl.rules.forEach(r => {
+        let target = r.target;
+        // Map target names
+        if (target === 'Proxy') target = LOON_CONFIG.groupNames.proxy;
+        if (target === 'Direct') target = 'DIRECT';
+        if (target === 'Reject') target = 'REJECT';
+        if (target === 'Auto') target = LOON_CONFIG.groupNames.proxy;
+
+        if (r.type === 'domain') lines.push(`DOMAIN,${r.value},${target}`);
+        else if (r.type === 'domain_suffix') lines.push(`DOMAIN-SUFFIX,${r.value},${target}`);
+        else if (r.type === 'domain_keyword') lines.push(`DOMAIN-KEYWORD,${r.value},${target}`);
+        else if (r.type === 'ip_cidr') lines.push(`IP-CIDR,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        else if (r.type === 'geoip') lines.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        else if (r.type === 'geosite') {
+            if (r.value === 'cn') lines.push(`GEOIP,CN,${target}`);
+            else lines.push(`// GEOSITE,${r.value},${target} (Not supported natively)`);
+        }
+        else if (r.type === 'process_name') lines.push(`PROCESS-NAME,${r.value},${target}`);
+    });
+
     lines.push('GEOIP,CN,DIRECT');
     lines.push(`FINAL,${LOON_CONFIG.groupNames.proxy}`);
 

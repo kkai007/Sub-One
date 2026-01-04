@@ -1119,13 +1119,16 @@ async function handleSubRequest(context: EventContext<Env, any, any>): Promise<R
 
     // === [核心改进] 使用内置转换器,完全内部化处理 ===
     try {
+        const ruleTemplate = url.searchParams.get('template') || 'minimal';
+
         // 使用内置转换器生成配置
         const convertedContent = subscriptionConverter.convert(
             combinedNodes,
             targetFormat,
             {
                 filename: subName,
-                includeRules: true
+                includeRules: true,
+                ruleTemplate: ruleTemplate
             }
         );
 

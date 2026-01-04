@@ -1,11 +1,13 @@
 import { ProxyNode, ConverterOptions, VmessNode, TrojanNode, ShadowsocksNode, Hysteria2Node, TuicNode, WireGuardNode, SnellNode } from '../../shared/types';
-import { SURGE_CONFIG } from './config';
+import { SURGE_CONFIG } from '../config/config';
+import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
 /**
  * 转换为 Surge 配置
  */
-export function toSurge(nodes: ProxyNode[], _options: ConverterOptions = {}): string {
+export function toSurge(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const lines: string[] = [];
+    const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
 
     lines.push(SURGE_CONFIG.managedConfig);
     lines.push('');
@@ -16,20 +18,64 @@ export function toSurge(nodes: ProxyNode[], _options: ConverterOptions = {}): st
     lines.push('');
     lines.push('[Proxy]');
 
+    const nodeNames: string[] = [];
     for (const node of nodes) {
         const line = nodeToSurgeLine(node);
         if (line) {
             lines.push(line);
+            nodeNames.push(node.name);
         }
     }
 
     lines.push('');
     lines.push('[Proxy Group]');
-    lines.push(`${SURGE_CONFIG.groupNames.proxy} = select, ` + nodes.map(n => n.name).join(', '));
+
+    // 基础策略组
+    // Proxy: 选择策略
+    lines.push(`${SURGE_CONFIG.groupNames.proxy} = select, ${tpl.groups.map(g => g.name).concat([SURGE_CONFIG.groupNames.direct]).join(', ')}, ${nodeNames.join(', ')}`);
+
+    // Template Groups
+    tpl.groups.forEach(g => {
+        const type = g.type === 'url-test' ? 'url-test' : 'select';
+        // 默认包含所有节点
+        let content = `${g.name} = ${type}, ${SURGE_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}`;
+        if (g.type === 'url-test') {
+            content += `, url=http://www.gstatic.com/generate_204, interval=600`;
+        }
+        lines.push(content);
+    });
+
     lines.push('');
     lines.push('[Rule]');
+
+    // Template Rules
+    tpl.rules.forEach(r => {
+        let target = r.target;
+        // Map target names
+        if (target === 'Proxy') target = SURGE_CONFIG.groupNames.proxy;
+        if (target === 'Direct') target = 'DIRECT';
+        if (target === 'Reject') target = 'REJECT';
+        if (target === 'Auto') target = SURGE_CONFIG.groupNames.proxy; // Surge auto usually implies url-test group or load-balance
+
+        if (r.type === 'domain') lines.push(`DOMAIN,${r.value},${target}`);
+        else if (r.type === 'domain_suffix') lines.push(`DOMAIN-SUFFIX,${r.value},${target}`);
+        else if (r.type === 'domain_keyword') lines.push(`DOMAIN-KEYWORD,${r.value},${target}`);
+        else if (r.type === 'ip_cidr') lines.push(`IP-CIDR,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        else if (r.type === 'geoip') lines.push(`GEOIP,${r.value},${target}${r.noResolve ? ',no-resolve' : ''}`);
+        else if (r.type === 'geosite') {
+            // Surge doesn't natively support GEOSITE logic like Clash/Singbox without external rule sets
+            // Map common GEOSITEs to basic keywords or warn?
+            // For now, simpler mapping or comment out
+            // Or assume user uses a Surge version with rule-set support
+            // Let's comment it out or map 'cn' to GEOIP CN
+            if (r.value === 'cn') lines.push(`GEOIP,CN,${target}`);
+            else lines.push(`// GEOSITE,${r.value},${target} (Not supported natively in simple Surge config)`);
+        }
+        else if (r.type === 'process_name') lines.push(`PROCESS-NAME,${r.value},${target}`);
+    });
+
     lines.push('GEOIP,CN,DIRECT');
-    lines.push(`FINAL,${SURGE_CONFIG.groupNames.proxy}`);
+    lines.push(`FINAL,${SURGE_CONFIG.groupNames.proxy},dns-failed`); // dns-failed is a good practice
 
     return lines.join('\n');
 }

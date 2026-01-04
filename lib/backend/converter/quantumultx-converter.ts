@@ -1,8 +1,10 @@
 import { ProxyNode, ConverterOptions, VmessNode, VlessNode, TrojanNode, ShadowsocksNode } from '../../shared/types';
-import { QX_CONFIG } from './config';
+import { QX_CONFIG } from '../config/config';
+import { getTemplate, RuleTemplate } from '../config/rule-templates';
 
-export function toQuantumultX(nodes: ProxyNode[], _options: ConverterOptions = {}): string {
+export function toQuantumultX(nodes: ProxyNode[], options: ConverterOptions = {}): string {
     const lines: string[] = [];
+    const tpl: RuleTemplate = getTemplate(options.ruleTemplate || 'minimal');
 
     lines.push('[general]');
     lines.push('server_check_url=http://www.apple.com/generate_204');
@@ -10,20 +12,63 @@ export function toQuantumultX(nodes: ProxyNode[], _options: ConverterOptions = {
     lines.push('');
     lines.push('[server_local]');
 
+    const nodeNames: string[] = [];
     for (const node of nodes) {
         const line = nodeToQuantumultXLine(node);
         if (line) {
             lines.push(line);
+            nodeNames.push(node.name);
         }
     }
 
     lines.push('');
-    lines.push('[filter_local]');
-    lines.push('host-suffix, local, direct');
-    lines.push('geoip, cn, direct');
-    lines.push(`final, ${QX_CONFIG.groupNames.proxy}`);
-    lines.push('');
     lines.push('[policy]');
+
+    // QX Policies
+    // static=Proxy, direct, proxy, img-url=...
+    // url-latency-benchmark=Auto,…
+
+    // 基础策略组
+    lines.push(`static=${QX_CONFIG.groupNames.proxy}, ${tpl.groups.map(g => g.name).concat([QX_CONFIG.groupNames.direct]).join(', ')}, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png`);
+    lines.push(`url-latency-benchmark=${QX_CONFIG.groupNames.auto}, ${nodeNames.join(', ')}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, img-url=https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Auto.png`);
+
+    // Template Groups
+    tpl.groups.forEach(g => {
+        if (g.type === 'url-test') {
+            lines.push(`url-latency-benchmark=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${nodeNames.join(', ')}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50`);
+        } else {
+            // select / fallback
+            lines.push(`static=${g.name}, ${QX_CONFIG.groupNames.proxy}, ${QX_CONFIG.groupNames.auto}, ${QX_CONFIG.groupNames.direct}, ${nodeNames.join(', ')}`);
+        }
+    });
+
+    lines.push('');
+    lines.push('[filter_local]');
+
+    // Template Rules
+    tpl.rules.forEach(r => {
+        let target = r.target;
+        // Map target names
+        if (target === 'Proxy') target = QX_CONFIG.groupNames.proxy;
+        if (target === 'Direct') target = QX_CONFIG.groupNames.direct;
+        if (target === 'Reject') target = 'reject';
+        if (target === 'Auto') target = QX_CONFIG.groupNames.proxy; // or Auto group
+
+        if (r.type === 'domain') lines.push(`host, ${r.value}, ${target}`);
+        else if (r.type === 'domain_suffix') lines.push(`host-suffix, ${r.value}, ${target}`);
+        else if (r.type === 'domain_keyword') lines.push(`host-keyword, ${r.value}, ${target}`);
+        else if (r.type === 'ip_cidr') lines.push(`ip-cidr, ${r.value}, ${target}${r.noResolve ? ', no-resolve' : ''}`);
+        else if (r.type === 'geoip') lines.push(`geoip, ${r.value}, ${target}`);
+        else if (r.type === 'geosite') {
+            if (r.value === 'cn') lines.push(`geoip, cn, ${target}`);
+            else lines.push(`; geosite, ${r.value}, ${target} (Not supported natively)`);
+        }
+        // process-name not consistently supported in QX or different syntax
+    });
+
+    lines.push(`host-suffix, local, ${QX_CONFIG.groupNames.direct}`);
+    lines.push(`geoip, cn, ${QX_CONFIG.groupNames.direct}`);
+    lines.push(`final, ${QX_CONFIG.groupNames.proxy}`);
 
     return lines.join('\n');
 }
